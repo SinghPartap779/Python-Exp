@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
+.claude/settings.local.json
+RawData/YellowTaxis_202210.csv

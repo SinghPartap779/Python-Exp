@@ -1,0 +1,66 @@
+[
+	{
+		"Id":4,
+		"VendorId":2,
+		"PickupTime":"2022-11-07T01:12:00.000Z",
+		"DropTime":"2022-11-07T01:38:00.000Z",
+		"PickupLocationId":120,
+		"DropLocationId":91,
+		"CabLicense":"T422240C",
+		"DriverLicense":400027,		
+		"PassengerCount":1,
+		"RateCodeId":1
+	},
+
+	{
+		"Id":5,
+		"VendorId":2,
+		"PickupTime":"2022-11-07T01:14:00.000Z",
+		"DropTime":"2022-11-07T02:00:00.000Z",
+		"PickupLocationId":148,
+		"DropLocationId":28,
+		"CabLicense":"T251430C",
+		"DriverLicense":467227,		
+		"PassengerCount":4,
+		"RateCodeId":1
+	},
+
+	{
+		"Id":6,
+		"VendorId":2,
+		"PickupTime":"2022-11-07T01:16:00.000Z",
+		"DropTime":"2022-11-07T02:10:00.000Z",
+		"PickupLocationId":167,
+		"DropLocationId":221,
+		"CabLicense":"T211430C",
+		"DriverLicense":461817,		
+		"PassengerCount":1,
+		"RateCodeId":1
+	},
+	
+	{
+		"Id":7,
+		"VendorId":2,
+		"PickupTime":"2022-11-07T01:14:00.000Z",
+		"DropTime":"2022-11-07T02:00:00.000Z",
+		"PickupLocationId":148,
+		"DropLocationId":28,
+		"CabLicense":"T251430C",
+		"DriverLicense":467227,		
+		"PassengerCount":4,
+		"RateCodeId":1
+	},
+
+	{
+		"Id":8,
+		"VendorId":2,
+		"PickupTime":"2022-11-07T01:16:00.000Z",
+		"DropTime":"2022-11-07T02:10:00.000Z",
+		"PickupLocationId":167,
+		"DropLocationId":221,
+		"CabLicense":"T211430C",
+		"DriverLicense":461817,		
+		"PassengerCount":1,
+		"RateCodeId":1
+	}
+]
