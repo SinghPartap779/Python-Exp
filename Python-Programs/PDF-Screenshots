@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""
+extract_exam_questions.py
+-------------------------
+Split a CertyIQ-style exam dump PDF into one PNG image per question,
+including the answer box. Questions spanning multiple pages are
+stitched vertically into a single tall image.
+
+Requirements:
+    pip install pymupdf pillow
+
+Usage:
+    python extract_exam_questions.py exam.pdf
+    python extract_exam_questions.py exam.pdf -o ./shots --dpi 200 --zip
+    python extract_exam_questions.py exam.pdf --pattern "QUESTION NO: (\\d+)"
+
+Output:
+    Question_01.png, Question_02.png, ... in the output folder
+    (plus an optional .zip if --zip is passed)
+"""
+
+import argparse
+import os
+import re
+import sys
+import zipfile
+
+try:
+    import fitz  # PyMuPDF
+    from PIL import Image
+except ImportError:
+    sys.exit("Missing dependencies. Run:  pip install pymupdf pillow")
+
+
+def find_question_markers(doc, pattern, max_header_len):
+    """Locate the (page, y-position, question-number) of each question header.
+
+    A 'header' is a text block whose first line matches the pattern and is
+    short (real headers are just 'Question: N', while case-study body text
+    that repeats the phrase tends to be part of a long paragraph block).
+    """
+    pat = re.compile(pattern)
+    markers = []
+    for pno in range(len(doc)):
+        for block in doc[pno].get_text("blocks"):
+            x0, y0, x1, y1, text, *_ = block
+            first_line = text.strip().splitlines()[0] if text.strip() else ""
+            m = pat.match(first_line)
+            if m and len(first_line) <= max_header_len:
+                markers.append((pno, y0, int(m.group(1))))
+
+    # Keep only the first occurrence of each question number, in reading order
+    markers.sort(key=lambda t: (t[0], t[1]))
+    seen, clean = set(), []
+    for pno, y, q in markers:
+        if q not in seen:
+            seen.add(q)
+            clean.append((pno, y, q))
+    return clean
+
+
+def extract(pdf_path, out_dir, dpi, pattern, max_header_len, skip_last_pages, pad_pts):
+    doc = fitz.open(pdf_path)
+    os.makedirs(out_dir, exist_ok=True)
+
+    markers = find_question_markers(doc, pattern, max_header_len)
+    if not markers:
+        sys.exit(
+            "No question headers found. Check --pattern (default expects "
+            "lines like 'Question: 12')."
+        )
+    print(f"Detected {len(markers)} questions: "
+          f"{markers[0][2]}..{markers[-1][2]}")
+
+    zoom = dpi / 72.0
+    mat = fitz.Matrix(zoom, zoom)
+    last_content_page = len(doc) - 1 - skip_last_pages
+
+    page_cache = {}
+
+    def render(pno):
+        if pno not in page_cache:
+            pix = doc[pno].get_pixmap(matrix=mat)
+            page_cache[pno] = Image.frombytes(
+                "RGB", (pix.width, pix.height), pix.samples
+            )
+        return page_cache[pno]
+
+    saved = []
+    for i, (spno, sy, q) in enumerate(markers):
+        # A question ends where the next question header begins,
+        # or at the bottom of the last content page.
+        if i + 1 < len(markers):
+            epno, ey, _ = markers[i + 1]
+        else:
+            epno, ey = last_content_page, doc[last_content_page].rect.height
+
+        parts = []
+        for pno in range(spno, epno + 1):
+            img = render(pno)
+            top = int(max(0, sy - pad_pts) * zoom) if pno == spno else 0
+            bot = int(max(0, ey - pad_pts) * zoom) if pno == epno else img.height
+            bot = min(bot, img.height)
+            if bot - top < 20:  # skip slivers
+                continue
+            parts.append(img.crop((0, top, img.width, bot)))
+
+        if not parts:
+            print(f"  Q{q}: skipped (empty segment)")
+            continue
+
+        width = max(p.width for p in parts)
+        height = sum(p.height for p in parts)
+        canvas = Image.new("RGB", (width, height), "white")
+        y = 0
+        for p in parts:
+            canvas.paste(p, (0, y))
+            y += p.height
+
+        out_path = os.path.join(out_dir, f"Question_{q:02d}.png")
+        canvas.save(out_path, optimize=True)
+        saved.append(out_path)
+        span = f"p{spno + 1}" if spno == epno else f"p{spno + 1}-{epno + 1}"
+        print(f"  Q{q}: {span}  ->  {os.path.basename(out_path)}")
+
+        # Free rendered pages we no longer need
+        for pno in list(page_cache):
+            if pno < spno:
+                del page_cache[pno]
+
+    return saved
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Split an exam-dump PDF into per-question PNG screenshots."
+    )
+    ap.add_argument("pdf", help="Path to the source PDF")
+    ap.add_argument("-o", "--out", default="question_shots",
+                    help="Output folder (default: ./question_shots)")
+    ap.add_argument("--dpi", type=int, default=150,
+                    help="Render resolution (default: 150; use 200 for sharper text)")
+    ap.add_argument("--pattern", default=r"^Question:\s*(\d+)\b",
+                    help="Regex for the question header; group 1 must be the number")
+    ap.add_argument("--max-header-len", type=int, default=40,
+                    help="Max length of a header line (filters out body-text matches)")
+    ap.add_argument("--skip-last-pages", type=int, default=1,
+                    help="Trailing pages to exclude, e.g. the thank-you page (default: 1)")
+    ap.add_argument("--pad", type=float, default=8.0,
+                    help="Padding in points above each header (default: 8)")
+    ap.add_argument("--zip", action="store_true",
+                    help="Also bundle the PNGs into <out>.zip")
+    args = ap.parse_args()
+
+    saved = extract(args.pdf, args.out, args.dpi, args.pattern,
+                    args.max_header_len, args.skip_last_pages, args.pad)
+
+    if args.zip and saved:
+        zip_path = args.out.rstrip("/\\") + ".zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in saved:
+                zf.write(f, os.path.basename(f))
+        print(f"\nZipped {len(saved)} images -> {zip_path}")
+
+    print(f"\nDone. {len(saved)} question images in '{args.out}'.")
+
+
+if __name__ == "__main__":
+    main()
